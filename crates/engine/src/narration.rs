@@ -127,6 +127,12 @@ fn cache_put(c: &SynthCache, key: String, a: Arc<tts::Audio>) {
     c.drain(..extra);
 }
 
+/// Whether this build can download and run the natural voices (Kokoro-82M). Official packages
+/// enable the `neural-voices` feature of the desktop app; a plain `cargo build` does not (#2318).
+pub fn natural_voices_available() -> bool {
+    cfg!(feature = "neural-voices")
+}
+
 /// Serializes neural voice package metadata into JSON.
 fn package_json(pkg: Option<&str>) -> Value {
     let dir = crate::transcript::models_dir();
@@ -139,7 +145,7 @@ fn package_json(pkg: Option<&str>) -> Value {
             "missingBytes": dir.as_deref().map_or(tts::catalog::piper_ru_size(), tts::catalog::piper_ru_missing_bytes),
             "license": tts::catalog::PIPER_RU_LICENSE,
             "source": tts::catalog::PIPER_RU_SOURCE,
-            "available": cfg!(feature = "neural-voices"),
+            "available": natural_voices_available(),
         })
     } else if pkg == Some(tts::catalog::KOKORO_RU_PACKAGE_ID) {
         json!({
@@ -150,7 +156,7 @@ fn package_json(pkg: Option<&str>) -> Value {
             "missingBytes": dir.as_deref().map_or(tts::catalog::kokoro_ru_size(), tts::catalog::kokoro_ru_missing_bytes),
             "license": tts::catalog::KOKORO_RU_LICENSE,
             "source": tts::catalog::KOKORO_RU_SOURCE,
-            "available": cfg!(feature = "neural-voices"),
+            "available": natural_voices_available(),
         })
     } else {
         json!({
@@ -161,7 +167,7 @@ fn package_json(pkg: Option<&str>) -> Value {
             "missingBytes": dir.as_deref().map_or(tts::catalog::size(), tts::catalog::missing_bytes),
             "license": tts::catalog::LICENSE,
             "source": tts::catalog::SOURCE,
-            "available": cfg!(feature = "neural-voices"),
+            "available": natural_voices_available(),
         })
     }
 }
@@ -223,7 +229,10 @@ fn write_and_import(s: &mut Session, p: &Value, samples: &[f32], rate: u32, near
         },
         _ => None,
     });
-    let dir = beside.unwrap_or_else(|| crate::voiceover::media_dir(s, p, "Narrations"));
+    let dir = match beside {
+        Some(d) => d,
+        None => crate::voiceover::media_dir(s, p, "Narrations")?,
+    };
     let path = crate::voiceover::unique_wav_path(s, &dir, BASE_NAME)?;
     if !cfg!(target_arch = "wasm32") {
         std::fs::create_dir_all(&dir).map_err(|e| EngineError::Other(format!("{dir}: {e}")))?;
